@@ -1,0 +1,190 @@
+% Create the object detector object.
+clear
+circleDetector = vision.CascadeObjectDetector('detCircle4.xml');
+triangleDetector = vision.CascadeObjectDetector('detTriangle2.xml');
+%%crossDetector = vision.CascadeObjectDetector('detCrosses2.xml');
+
+% Create the point tracker object.
+pointTrackerCircle = vision.PointTracker('MaxBidirectionalError', 2);
+pointTrackerTriangle = vision.PointTracker('MaxBidirectionalError', 2);
+
+% Create the webcam object.
+cam = webcam();
+%%
+% Capture one frame to get its size.
+videoFrame = snapshot(cam);
+frameSize = size(videoFrame);
+
+% Create the video player object.
+videoPlayer = vision.VideoPlayer('Position', [100 100 [frameSize(2), frameSize(1)]+30]);
+%%
+runLoop = true;
+numPtsCircle = 0;
+numPtsTriangle = 0;
+
+
+while (1==1) && runLoop 
+
+    % Get the next frame.
+    videoFrame = snapshot(cam);
+    videoFrame2 = snapshot(cam);
+    videoFrameGray = rgb2gray(videoFrame);
+    videoFrameGray2 = rgb2gray(videoFrame2);
+
+    %For Circles
+    %
+    if numPtsCircle < 10
+        % Detection mode.
+        bboxCircle = circleDetector.step(videoFrameGray);
+
+        if ~isempty(bboxCircle)
+            % Find corner points inside the detected region.
+            pointsCircle = detectMinEigenFeatures(videoFrameGray, 'ROI', bboxCircle(1, :));
+
+            % Re-initialize the point tracker.
+            xyPointsCircle = pointsCircle.Location;
+            numPtsCircle = size(xyPointsCircle,1);
+            release(pointTrackerCircle);
+            initialize(pointTrackerCircle, xyPointsCircle, videoFrameGray);
+
+            % Save a copy of the points.
+            oldPointsCircle = xyPointsCircle;
+
+            % Convert the rectangle represented as [x, y, w, h] into an
+            % M-by-2 matrix of [x,y] coordinates of the four corners. This
+            % is needed to be able to transform the bounding box to display
+            % the orientation of the face.
+            bboxPointsCircle = bbox2points(bboxCircle(1, :));
+
+            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4]
+            % format required by insertShape.
+            bboxPolygonCircle = reshape(bboxPointsCircle', 1, []);
+
+            % Display a bounding box around the detected object.
+            videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygonCircle, 'LineWidth', 3);
+
+            % Display detected corners.
+            videoFrame = insertMarker(videoFrame, xyPointsCircle, '+', 'Color', 'white');
+        end
+
+    else
+        % Tracking mode.
+        [xyPointsCircle, isFoundCircle] = step(pointTrackerCircle, videoFrameGray);
+        visiblePointsCircle = xyPointsCircle(isFoundCircle, :);
+        oldInliersCircles = oldPointsCircle(isFoundCircle, :);
+
+        numPtsCircle = size(visiblePointsCircle, 1);
+
+        if numPtsCircle >= 10
+            % Estimate the geometric transformation between the old points
+            % and the new points.
+            [xform, oldInliersCircles, visiblePointsCircle] = estimateGeometricTransform(...
+                oldInliersCircles, visiblePointsCircle, 'similarity', 'MaxDistance', 4);
+
+            % Apply the transformation to the bounding box.
+            bboxPointsCircle = transformPointsForward(xform, bboxPointsCircle);
+
+            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4]
+            % format required by insertShape.
+            bboxPolygonCircle = reshape(bboxPointsCircle', 1, []);
+
+            % Display a bounding box around the face being tracked.
+            videoFrame = insertShape(videoFrame, 'Polygon', bboxPolygonCircle, 'LineWidth', 3);
+
+            % Display tracked points.
+            videoFrame = insertMarker(videoFrame, visiblePointsCircle, '+', 'Color', 'white');
+
+            % Reset the points.
+            oldPointsCircle = visiblePointsCircle;
+            setPoints(pointTrackerCircle, oldPointsCircle);
+        end
+
+    end
+    %%step(videoPlayer, videoFrame);
+    %}
+    %For Triangles
+    %
+    if numPtsTriangle < 10
+        % Detection mode.
+        bboxTriangle = triangleDetector.step(videoFrameGray2);
+
+        if ~isempty(bboxTriangle)
+            % Find corner points inside the detected region.
+            pointsTriangle = detectMinEigenFeatures(videoFrameGray2, 'ROI', bboxTriangle(1, :));
+
+            % Re-initialize the point tracker.
+            xyPointsTriangle = pointsTriangle.Location;
+            numPtsTriangle = size(xyPointsTriangle,1);
+            release(pointTrackerTriangle);
+            initialize(pointTrackerTriangle, xyPointsTriangle, videoFrameGray2);
+
+            % Save a copy of the points.
+            oldPointsTriangle = xyPointsTriangle;
+
+            % Convert the rectangle represented as [x, y, w, h] into an
+            % M-by-2 matrix of [x,y] coordinates of the four corners. This
+            % is needed to be able to transform the bounding box to display
+            % the orientation of the face.
+            bboxPointsTriangle = bbox2points(bboxTriangle(1, :));
+
+            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4]
+            % format required by insertShape.
+            bboxPolygonTriangle = reshape(bboxPointsTriangle', 1, []);
+
+            % Display a bounding box around the detected object.
+            videoFrame2 = insertShape(videoFrame2, 'Polygon', bboxPolygonTriangle, 'LineWidth', 3);
+
+            % Display detected corners.
+            videoFrame2 = insertMarker(videoFrame2, xyPointsTriangle, '+', 'Color', 'white');
+        end
+
+    else
+        % Tracking mode.
+        [xyPointsTriangle, isFoundTriangle] = step(pointTrackerTriangle, videoFrameGray2);
+        visiblePointsTriangle = xyPointsTriangle(isFoundTriangle, :);
+        oldInliersTriangle = oldPointsTriangle(isFoundTriangle, :);
+
+        numPtsTriangle = size(visiblePointsTriangle, 1);
+
+        if numPtsTriangle >= 10
+            % Estimate the geometric transformation between the old points
+            % and the new points.
+            [xform, oldInliersTriangle, visiblePointsTriangle] = estimateGeometricTransform(...
+                oldInliersTriangle, visiblePointsTriangle, 'similarity', 'MaxDistance', 4);
+
+            % Apply the transformation to the bounding box.
+            bboxPointsTriangle = transformPointsForward(xform, bboxPointsTriangle);
+
+            % Convert the box corners into the [x1 y1 x2 y2 x3 y3 x4 y4]
+            % format required by insertShape.
+            bboxPolygonTriangle = reshape(bboxPointsTriangle', 1, []);
+
+            % Display a bounding box around the face being tracked.
+            videoFrame2 = insertShape(videoFrame2, 'Polygon', bboxPolygonTriangle, 'LineWidth', 3);
+
+            % Display tracked points.
+            videoFrame2 = insertMarker(videoFrame2, visiblePointsTriangle, '+', 'Color', 'white');
+
+            % Reset the points.
+            oldPointsTriangle = visiblePointsTriangle;
+            setPoints(pointTrackerTriangle, oldPointsTriangle);
+        end
+        %}
+
+    end
+    
+    % Display the annotated video frame using the video player object.
+    step(videoPlayer, videoFrame2);
+    
+    
+    % Check whether the video player window has been closed.
+    runLoop = isOpen(videoPlayer);
+end
+
+%% Clean up.
+clear cam;
+release(videoPlayer);
+release(pointTrackerCircle);
+release(pointTrackerTriangle);
+release(circleDetector);
+release(triangleDetector);
